@@ -556,6 +556,10 @@ jobs:
 
       - name: Deploy manifests
         run: |
-          kubectl apply -f k8-manifests/qa/ -n "${K8S_NAMESPACE}"
+          kubectl apply -f k8-manifests/qa/ -n "${K8S_NAMESPACE}" - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/nodejs-app -n "${K8S_NAMESPACE}" --timeout=180s
+
+           
 
      
