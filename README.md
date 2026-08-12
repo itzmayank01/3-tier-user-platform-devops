@@ -9,6 +9,8 @@ reading this to judge whether I understand what I built, the reasoning below is 
 worth reading.
 
 ---
+<img width="2720" height="3120" alt="eks_3tier_end_to_end_cicd_and_runtime" src="https://github.com/user-attachments/assets/b36c7ab8-6c0c-4a4d-9b61-4f159b501859" />
+
 
 ## The constraint I started with
 
