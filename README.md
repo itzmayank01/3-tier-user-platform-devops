@@ -1,4 +1,4 @@
-# 3-tier-user-platform-devops
+# Cloud-Native 3-Tier Application on Kubernetes (AWS EKS)
 
 A React + Express + database app running on Amazon EKS, shipped by a GitHub Actions
 pipeline that nobody has to babysit.
