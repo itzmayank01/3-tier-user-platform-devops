@@ -8,17 +8,10 @@ it, in the order I made them, including the ones I would make differently now. I
 reading this to judge whether I understand what I built, the reasoning below is the part
 worth reading.
 
-# Diagrams for README
-
-Four Mermaid diagrams. GitHub renders these natively inside a fenced code block tagged
-`mermaid` — no image export, no attachment upload. Paste each block into the section noted
-above it.
-
----
 
 ## 1. System architecture — goes under `## Architecture`
 
-```mermaid
+mermaid
 flowchart LR
     CLIENT["Client<br/>browser"]
     R53["Route 53<br/>ALIAS record"]
@@ -49,15 +42,15 @@ flowchart LR
     class CLIENT,R53,ALB edge
     class SVC,POD compute
     class DB,ECR data
-```
+
 
 ---
 
-## 2. CI/CD pipeline — goes under `## CI/CD pipeline`
+## 2. CI/CD pipeline — goes under ` CI/CD pipeline`
 
 Shows the fail paths, which is the part a flat list of stages cannot express.
 
-```mermaid
+mermaid
 flowchart TD
     START(["Merge to main"]) --> CHECKOUT["Checkout<br/>full git history"]
     CHECKOUT --> GITLEAKS{"Gitleaks<br/>secret scan"}
@@ -94,7 +87,7 @@ flowchart TD
     class PUSH,OIDC,DEPLOY aws
     class FAIL bad
     class START,DONE good
-```
+
 
 Everything above `PUSH` runs on the runner. Nothing reaches the registry until every gate has
 passed, which is why the four failure edges all terminate before publication.
@@ -106,7 +99,7 @@ passed, which is why the four failure edges all terminate before publication.
 A sequence diagram is the right shape here, because the ordering and the round trips are the
 substance of the explanation.
 
-```mermaid
+mermaid
 sequenceDiagram
     autonumber
     participant W as GitHub Actions job
@@ -125,12 +118,12 @@ sequenceDiagram
     E->>K: Map IAM principal to Kubernetes identity<br/>aws-auth or Access Entries
     K-->>W: RBAC permissions granted
     W->>E: kubectl set image, rollout status
-```
+
 
 Steps 8 and 9 are the ones that are easy to miss. IAM authentication reaches the control plane
 API; it does not by itself confer in-cluster permissions.
 
----
+
 
 ## 4. Release and rollback states — goes under `## Image tagging and rollback`
 
