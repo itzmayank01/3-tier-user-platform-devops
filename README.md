@@ -8,8 +8,162 @@ it, in the order I made them, including the ones I would make differently now. I
 reading this to judge whether I understand what I built, the reasoning below is the part
 worth reading.
 
+# Diagrams for README
+
+Four Mermaid diagrams. GitHub renders these natively inside a fenced code block tagged
+`mermaid` — no image export, no attachment upload. Paste each block into the section noted
+above it.
+
 ---
-<img width="2720" height="3120" alt="eks_3tier_end_to_end_cicd_and_runtime" src="https://github.com/user-attachments/assets/b36c7ab8-6c0c-4a4d-9b61-4f159b501859" />
+
+## 1. System architecture — goes under `## Architecture`
+
+```mermaid
+flowchart LR
+    CLIENT["Client<br/>browser"]
+    R53["Route 53<br/>ALIAS record"]
+    ECR[("Amazon ECR<br/>commit-SHA tags")]
+
+    subgraph VPC["VPC"]
+        direction TB
+        subgraph PUBLIC["Public subnets"]
+            ALB["Application Load Balancer<br/>TLS terminated via ACM"]
+        end
+        subgraph PRIVATE["Private subnets"]
+            SVC["Service<br/>target-type: ip"]
+            POD["Application pods<br/>Node 20, port 5000"]
+            DB[("Managed database")]
+        end
+    end
+
+    CLIENT --> R53
+    R53 --> ALB
+    ALB -->|Ingress rules| SVC
+    SVC --> POD
+    POD --> DB
+    ECR -.->|image pull| POD
+
+    classDef edge fill:#E6F1FB,stroke:#185FA5,color:#0C447C
+    classDef compute fill:#EEEDFE,stroke:#534AB7,color:#3C3489
+    classDef data fill:#E1F5EE,stroke:#0F6E56,color:#085041
+    class CLIENT,R53,ALB edge
+    class SVC,POD compute
+    class DB,ECR data
+```
+
+---
+
+## 2. CI/CD pipeline — goes under `## CI/CD pipeline`
+
+Shows the fail paths, which is the part a flat list of stages cannot express.
+
+```mermaid
+flowchart TD
+    START(["Merge to main"]) --> CHECKOUT["Checkout<br/>full git history"]
+    CHECKOUT --> GITLEAKS{"Gitleaks<br/>secret scan"}
+
+    GITLEAKS -->|findings| FAIL(["Pipeline fails<br/>nothing published"])
+    GITLEAKS -->|clean| SONAR["SonarQube<br/>quality gate"]
+    GITLEAKS -->|clean| CHECKOV["Checkov<br/>manifests, Dockerfile"]
+    GITLEAKS -->|clean| TESTS["Lint and unit tests"]
+
+    SONAR --> GATE{"All three passed?"}
+    CHECKOV --> GATE
+    TESTS --> GATE
+
+    GATE -->|no| FAIL
+    GATE -->|yes| BUILD["Docker build<br/>single image, non-root"]
+    BUILD --> TRIVY{"Trivy image scan<br/>HIGH / CRITICAL"}
+
+    TRIVY -->|blocking CVE| FAIL
+    TRIVY -->|clean| PUSH["Push to Amazon ECR<br/>tag = commit SHA"]
+    PUSH --> OIDC["Assume IAM role<br/>GitHub OIDC, no stored keys"]
+    OIDC --> DEPLOY["Update Deployment image"]
+    DEPLOY --> VERIFY{"kubectl rollout status<br/>--timeout"}
+
+    VERIFY -->|timeout| FAIL
+    VERIFY -->|ready| DONE(["Live in production"])
+
+    classDef gate fill:#FAEEDA,stroke:#854F0B,color:#633806
+    classDef step fill:#F1EFE8,stroke:#5F5E5A,color:#444441
+    classDef aws fill:#EEEDFE,stroke:#534AB7,color:#3C3489
+    classDef bad fill:#FCEBEB,stroke:#A32D2D,color:#791F1F
+    classDef good fill:#EAF3DE,stroke:#3B6D11,color:#27500A
+    class GITLEAKS,SONAR,CHECKOV,TESTS,GATE,TRIVY,VERIFY gate
+    class CHECKOUT,BUILD step
+    class PUSH,OIDC,DEPLOY aws
+    class FAIL bad
+    class START,DONE good
+```
+
+Everything above `PUSH` runs on the runner. Nothing reaches the registry until every gate has
+passed, which is why the four failure edges all terminate before publication.
+
+---
+
+## 3. Keyless authentication — goes under `## Authentication model`
+
+A sequence diagram is the right shape here, because the ordering and the round trips are the
+substance of the explanation.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as GitHub Actions job
+    participant G as GitHub OIDC issuer
+    participant S as AWS STS
+    participant E as EKS control plane
+    participant K as Kubernetes RBAC
+
+    W->>G: Request ID token<br/>(permissions: id-token: write)
+    G-->>W: Short-lived signed JWT
+    W->>S: AssumeRoleWithWebIdentity(JWT)
+    S->>S: Verify signature against provider
+    S->>S: Evaluate trust policy<br/>aud and sub conditions
+    S-->>W: Temporary credentials (~1 hour)
+    W->>E: eks:DescribeCluster, update kubeconfig
+    E->>K: Map IAM principal to Kubernetes identity<br/>aws-auth or Access Entries
+    K-->>W: RBAC permissions granted
+    W->>E: kubectl set image, rollout status
+```
+
+Steps 8 and 9 are the ones that are easy to miss. IAM authentication reaches the control plane
+API; it does not by itself confer in-cluster permissions.
+
+---
+
+## 4. Release and rollback states — goes under `## Image tagging and rollback`
+
+mermaid
+stateDiagram-v2
+    [*] --> Building: merge to main
+    Building --> Scanning: image built
+    Scanning --> Rejected: HIGH or CRITICAL finding
+    Scanning --> Published: gates passed
+    Rejected --> [*]
+
+    Published --> RollingOut: Deployment image updated
+    RollingOut --> Live: readiness probes pass
+    RollingOut --> Blocked: probes fail, maxUnavailable holds traffic
+    Blocked --> RolledBack: previous SHA redeployed
+    Live --> RolledBack: defect found in production
+    RolledBack --> Live: previous image already in ECR
+    Live --> [*]
+
+`Blocked` is the state that matters operationally: readiness probes plus a conservative
+`maxUnavailable` mean a defective release is held out of the traffic path rather than rolled
+back after users have seen it.
+
+
+## Notes
+
+- Mermaid renders on github.com, in most IDE markdown previews, and on GitHub Pages. It does
+  not render on npm, PyPI, or some documentation hosts — if you ever mirror this README
+  elsewhere, check there first.
+- `classDef` colours are optional. Removing every `classDef` and `class` line leaves valid
+  Mermaid with default theming, which some reviewers prefer.
+- Keep the diagrams and the prose in sync. A diagram that contradicts the text below it is
+  worse than no diagram, because a reader will trust the picture.
 
 
 ## The constraint I started with
